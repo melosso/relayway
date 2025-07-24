@@ -19,18 +19,13 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  version:
+  get-version:
     runs-on: ubuntu-latest
-    name: Build and bump version
+    name: Get version info
     outputs:
       version: ${{ steps.get_version.outputs.version }}
       tag_name: ${{ steps.get_version.outputs.tag_name }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: main
-
       - name: Get version
         id: get_version
         run: |
@@ -46,22 +41,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Bump build version
-        id: bump
-        uses: vers-one/dotnet-project-version-updater@v1.3
-        with:
-          file: "Relayway.csproj"
-          version: ${{ steps.get_version.outputs.version }}
-
-      - run: |
-          git config user.name "${GITHUB_ACTOR}"
-          git config user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
-          git add .
-          git commit -m "Bump project version to ${{ steps.bump.outputs.newVersion }}"
-          git push
-
   release:
-    needs: version
+    needs: get-version
     name: Release
     strategy:
       matrix:
@@ -85,7 +66,7 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          tag=${{ needs.version.outputs.tag_name }}
+          tag=${{ needs.get-version.outputs.tag_name }}
           release_name="Relayway-$tag-${{ matrix.target }}"
 
           # Build everything
@@ -105,14 +86,14 @@ jobs:
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.version.outputs.tag_name }}
+          tag_name: ${{ needs.get-version.outputs.tag_name }}
           files: "Relayway-*"
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
   build-and-push-image:
-    needs: version
+    needs: get-version
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -135,7 +116,7 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=raw,value=${{ needs.version.outputs.tag_name }}
+            type=raw,value=${{ needs.get-version.outputs.tag_name }}
             type=raw,value=latest,enable={{is_default_branch}}
             
       - name: Build and push Docker image

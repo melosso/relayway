@@ -12,29 +12,30 @@ on:
           - patch
           - minor
           - major
+
 jobs:
-  create-release:
-    runs-on: windows-latest
+  create-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.versioning.outputs.new_version }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.x'
+
     - name: Install semver
       run: pip install semver
-    - name: Setup dotnet
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: 9.0.x
+
     - name: Calculate new version
       id: versioning
       run: |
-        $LATEST_TAG = (git tag --sort=-v:refname | Select-Object -First 1)
-        if (-not $LATEST_TAG) { $LATEST_TAG = "$(Get-Date -Format 'yyyy').0.0" }
+        LATEST_TAG=$(git tag --sort=-v:refname | head -n 1 || echo "$(date +%Y).0.0")
         RELEASE_TYPE="${{ github.event.inputs.release_type }}"
         VERSION=$(python -c "
         import semver
@@ -56,6 +57,7 @@ jobs:
         print(new_version)
         ")
         echo "new_version=$VERSION" >> $GITHUB_OUTPUT
+
     - name: Create and push new tag
       run: |
         NEW_TAG=${{ steps.versioning.outputs.new_version }}
@@ -63,32 +65,62 @@ jobs:
         git config user.email github-actions@github.com
         git tag -f "$NEW_TAG"
         git push origin --force "refs/tags/$NEW_TAG"
-    - name: Build .NET app (Windows)
-      run: |
-        $NEW_TAG = "${{ steps.versioning.outputs.new_version }}"
-        dotnet publish Relayway.csproj --framework net9.0 --runtime win-x64 -c Release -o "Release-$NEW_TAG" -p:PublishSingleFile=true --self-contained false
-    - name: Copy config files
-      run: |
-        $NEW_TAG = "${{ steps.versioning.outputs.new_version }}"
-        if (Test-Path "appsettings.json") { Copy-Item "appsettings.json" "Release-$NEW_TAG/appsettings.json" }
-        if (Test-Path "Relayway.xml") { Copy-Item "Relayway.xml" "Release-$NEW_TAG/Relayway.xml" }
-    - name: Create version file
-      run: |
-        $NEW_TAG = "${{ steps.versioning.outputs.new_version }}"
-        Set-Content -Path "Release-$NEW_TAG/version.txt" -Value $NEW_TAG
-    - name: Zip Release folder
-      run: |
-        $NEW_TAG = "${{ steps.versioning.outputs.new_version }}"
-        Compress-Archive -Path "Release-$NEW_TAG/*" -DestinationPath "${NEW_TAG}-Release.zip"
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: ${{ steps.versioning.outputs.new_version }}
-        files: |
-          ${{ steps.versioning.outputs.new_version }}-Release.zip
-        generate_release_notes: true
-    - name: Deploy to target environment
-      run: |
-        NEW_TAG=${{ steps.versioning.outputs.new_version }}
-        echo "Deploying version $NEW_TAG"
-        unzip -o "${NEW_TAG}-Release.zip"
+
+  build-releases:
+    needs: create-tag
+    name: Build Release
+    strategy:
+      matrix:
+        kind: ['linux', 'windows', 'macOS']
+        include:
+          - kind: linux
+            os: ubuntu-latest
+            target: linux-x64
+          - kind: windows
+            os: windows-latest
+            target: win-x64
+          - kind: macOS
+            os: macos-latest
+            target: osx-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup dotnet
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Build
+        shell: bash
+        run: |
+          release_name="Relayway-${{ needs.create-tag.outputs.new_version }}-${{ matrix.target }}"
+
+          # Build everything
+          dotnet publish Relayway.csproj --framework net9.0 --runtime "${{ matrix.target }}" -c Release -o "$release_name" -p:PublishSingleFile=true --self-contained false 
+          
+          # Add version file
+          echo "${{ needs.create-tag.outputs.new_version }}" > "$release_name/version.txt"
+
+          # Pack files
+          if [ "${{ matrix.target }}" == "win-x64" ]; then
+            # Add Windows-specific files if they exist
+            [ -f "Relayway.xml" ] && cp "Relayway.xml" "$release_name/"
+            # Pack to zip for Windows
+            7z a -tzip "${release_name}.zip" "./${release_name}/*"
+          else
+            tar czvf "${release_name}.tar.gz" "$release_name"
+          fi
+
+          # Delete output directory
+          rm -r "$release_name"
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.create-tag.outputs.new_version }}
+          files: "Relayway-*"
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -22,6 +22,9 @@ jobs:
   version:
     runs-on: ubuntu-latest
     name: Build and bump version
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      tag_name: ${{ steps.get_version.outputs.tag_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,8 +41,8 @@ jobs:
           else
             tag=$(gh release list --limit 1 --repo "${{ github.repository }}" | awk '{print $1}')
           fi
-          echo "VERSION=${tag#v}" >> $GITHUB_ENV
-          echo "TAG_NAME=${tag}" >> $GITHUB_ENV
+          echo "version=${tag#v}" >> $GITHUB_OUTPUT
+          echo "tag_name=${tag}" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -48,7 +51,7 @@ jobs:
         uses: vers-one/dotnet-project-version-updater@v1.3
         with:
           file: "Relayway.csproj"
-          version: ${{ env.VERSION }}
+          version: ${{ steps.get_version.outputs.version }}
 
       - run: |
           git config user.name "${GITHUB_ACTOR}"
@@ -82,7 +85,7 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          tag=${{ env.TAG_NAME }}
+          tag=${{ needs.version.outputs.tag_name }}
           release_name="Relayway-$tag-${{ matrix.target }}"
 
           # Build everything
@@ -100,9 +103,11 @@ jobs:
           rm -r "$release_name"
 
       - name: Publish
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.version.outputs.tag_name }}
           files: "Relayway-*"
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
@@ -112,24 +117,29 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      # Uses the `docker/login-action` action to log in to the Container registry registry using the account and password that will publish the packages. Once published, the packages are scoped to the account defined here.
+        with:
+          ref: main
+          
       - name: Log in to the Container registry
-        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # This step uses [docker/metadata-action](https://github.com/docker/metadata-action#about) to extract tags and labels that will be applied to the specified image. The `id` "meta" allows the output of this step to be referenced in a subsequent step. The `images` value provides the base name for the tags and labels.
+          
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-      # This step uses the `docker/build-push-action` action to build the image, based on your repository's `Dockerfile`. If the build succeeds, it pushes the image to GitHub Packages.
-      # It uses the `context` parameter to define the build's context as the set of files located in the specified path. For more information, see "[Usage](https://github.com/docker/build-push-action#usage)" in the README of the `docker/build-push-action` repository.
-      # It uses the `tags` and `labels` parameters to tag and label the image with the output from the "meta" step.
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=raw,value=${{ needs.version.outputs.tag_name }}
+            type=raw,value=latest,enable={{is_default_branch}}
+            
       - name: Build and push Docker image
-        uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
+        uses: docker/build-push-action@v5
         with:
           context: .
           push: true

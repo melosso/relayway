@@ -1,15 +1,14 @@
 # Relayway - SMTP relay to Microsoft Graph
 
-[![.NET](https://img.shields.io/badge/.NET-5C2D91)](https://dotnet.microsoft.com/)
-[![License](https://img.shields.io/github/license/hawkinslabdev/mijnmotorparkeren)](LICENSE)
-[![Last commit](https://img.shields.io/github/last-commit/hawkinslabdev/mijnmotorparkeren)](https://github.com/hawkinslabdev/mijnmotorparkeren/commits/main)
+[![License](https://img.shields.io/github/license/melosso/relayway)](LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/melosso/relayway)](https://github.com/melosso/relayway/commits/main)
 [![Latest Release](https://img.shields.io/github/v/release/melosso/relayway)](https://github.com/melosso/relayway/releases/latest)
 
 **Relayway** is a lightweight SMTP relay server that bridges legacy applications with Microsoft Graph's modern OAuth authentication. When Microsoft disabled basic authentication for Exchange, many applications were left unable to send emails through O365. Relayway solves this by acting as a local SMTP server that receives emails and forwards them via Microsoft Graph API.
 
 Common applications that benefit from Relayway include monitoring systems, backup software, legacy ERP systems, and any application that needs to send notifications via email without OAuth support.
 
-> 📍 [Documentation](https://relayway-docs.melosso.com) | 🧪 [Packages](https://github.com/melosso/relayway/packages)
+> ✨ [Releases](https://github.com/melosso/relayway/releases) | 📦 [Packages](https://github.com/melosso/relayway/packages)
 
 **Our goal**: Enable any application to send emails through Microsoft 365 without in-app OAuth complexity. 
 

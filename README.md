@@ -181,6 +181,7 @@ Log configuration follows [Serilog standards](https://github.com/serilog/serilog
 
 Thanks to the open source tools that make Relayway possible:
 
+* [MailMust](https://github.com/bxdavies/MustMail) by Ben Davies 
 * [ASP.NET Core](https://learn.microsoft.com/en-us/aspnet/core/)
 * [SmtpServer](https://github.com/cosullivan/SmtpServer) by Cain O'Sullivan
 * [Microsoft Graph SDK](https://github.com/microsoftgraph/msgraph-sdk-dotnet)

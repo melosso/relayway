@@ -1,0 +1,12 @@
+name: relayway-page
+services:
+  relayway-website:
+    container_name: relayway-website
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8180:80"
+    environment:
+      - REPO_URL=https://github.com/melosso/relayway.git
+      - REPO_BRANCH=main

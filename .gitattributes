@@ -4,9 +4,9 @@
 # Exclude .pages directory from GitHub language statistics
 .pages/* linguist-vendored
 
-*.html linguist-vendored
-*.htm linguist-vendored
-*.css linguist-vendored
-*.conf linguist-vendored   
-*.yml linguist-vendored
-*.sh linguist-vendored
+*.html linguist-vendored=true
+*.htm linguist-vendored=true
+*.css linguist-vendored=true
+*.conf linguist-vendored=true
+*.yml linguist-vendored=true
+*.sh linguist-vendored=true

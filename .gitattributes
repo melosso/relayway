@@ -64,3 +64,4 @@
 
 # Exclude .pages directory from GitHub language statistics
 .pages/* linguist-vendored
+.pages/* linguist-documentation

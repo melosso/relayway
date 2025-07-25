@@ -3,7 +3,7 @@
 # Repository and folder details
 REPO_URL="https://github.com/melosso/relayway.git"
 REPO_BRANCH="main"
-SOURCE_FOLDER="/Pages/Web"
+SOURCE_FOLDER="/.pages/web"
 DESTINATION_FOLDER="/usr/share/nginx/html"
 
 # Clone the repository

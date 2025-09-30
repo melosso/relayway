@@ -55,6 +55,10 @@ Create your Azure application registration to enable Microsoft Graph access.
 
 Grab the [latest release](https://github.com/melosso/relayway/releases/latest) and extract it to your deployment folder.
 
+## Installation
+> [!CAUTION]
+> Do not set SMTP Host to anything other than `localhost` because the server does not have authentication or encryption!
+
 ### 3. Configuration
 
 Define your Microsoft Graph and SMTP settings to enable email relay functionality.

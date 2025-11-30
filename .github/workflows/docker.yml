@@ -1,18 +1,13 @@
-name: Publish
+name: Build And Push Docker Image
+
+on:
+  push:
+    tags:    [ '[0-9][0-9][0-9][0-9].*' ]
+  workflow_dispatch: {}
 
 permissions:
-  contents: write
+  contents: read
   packages: write
-  
-on:
-  release:
-    types: [published]
-  workflow_dispatch:
-    inputs:
-      tag_name:
-        description: 'Release tag to build from (leave blank for latest)'
-        required: false
-        type: string
 
 env:
   REGISTRY: ghcr.io

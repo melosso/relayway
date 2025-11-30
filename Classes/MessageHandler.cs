@@ -40,30 +40,33 @@ public class MessageHandler(GraphServiceClient graphClient, ILogger logger, stri
         // Set stream position back to 0
         stream.Position = 0;
 
+
         // Load the memory stream as a Mime Message
         MimeMessage? message = await MimeMessage.LoadAsync(stream, cancellationToken);
 
-        // Debug log for the Mime Message
-        logger.Debug($"Mime Message:\n {message.ToString()}");
-
-        // If message is null then return an error
         if (message == null)
         {
             Log.Warning("Unable to read message as Mime Message!");
             return SmtpResponse.SyntaxError;
         }
 
+        // Debug log for the Mime Message
+        logger.Debug($"Mime Message:\n {message}");
+
+        Console.WriteLine(message.Attachments?.Count() ?? 0);
+
+
         // Create list of recipients
-        List<Recipient> recipients = message.To
-        .OfType<MimeKit.MailboxAddress>() // only process mailbox addresses
-        .Select(addr => new Recipient
-        {
-            EmailAddress = new EmailAddress
+        List<Recipient> recipients = message.To?
+            .OfType<MimeKit.MailboxAddress>() // only process mailbox addresses
+            .Select(addr => new Recipient
             {
-                Address = addr.Address,      // plain email only
-                Name = addr.Name             // optional, can be null or empty
-            }
-        }).ToList();
+                EmailAddress = new EmailAddress
+                {
+                    Address = addr.Address,      // plain email only
+                    Name = addr.Name             // optional, can be null or empty
+                }
+            }).ToList() ?? new List<Recipient>();
 
         logger.Debug("Recipients list: {Recipients}", string.Join(", ", recipients.Select(r => r.EmailAddress?.Address ?? string.Empty)));
 
@@ -75,11 +78,10 @@ public class MessageHandler(GraphServiceClient graphClient, ILogger logger, stri
                 Subject = message.Subject,
                 ToRecipients = recipients
             }
-
         };
-
+        
         // If message does contain a HTML body then use it
-        if (message.HtmlBody != null)
+        if (!string.IsNullOrEmpty(message.HtmlBody))
         {
             requestBody.Message.Body = new ItemBody
             {
@@ -93,8 +95,30 @@ public class MessageHandler(GraphServiceClient graphClient, ILogger logger, stri
             requestBody.Message.Body = new ItemBody
             {
                 ContentType = BodyType.Text,
-                Content = message.TextBody
+                Content = message.TextBody ?? string.Empty
             };
+        }
+
+        // If the message has attachments then add them
+        if (message.Attachments != null && message.Attachments.Any())
+        {
+            requestBody.Message.Attachments ??= new List<Attachment>();
+
+            foreach (MimeEntity mimeEntity in message.Attachments)
+            {
+                if (mimeEntity is MimePart mimePart)
+                {
+                    using var memory = new MemoryStream();
+                    mimePart.Content?.DecodeTo(memory);
+
+                    requestBody.Message.Attachments.Add(new FileAttachment
+                    {
+                        OdataType = "#microsoft.graph.fileAttachment",
+                        Name = mimePart.FileName,
+                        ContentBytes = memory.ToArray()
+                    });
+                }
+            }
         }
 
         try
@@ -110,7 +134,7 @@ public class MessageHandler(GraphServiceClient graphClient, ILogger logger, stri
 
 
         // Log success message
-        logger.Information("The email with the subject `{MessageSubject}` was received and sent to `{MessageTo}` as `{From}`!", message.Subject, message.To, sendFrom);
+        logger.Information("The email with the subject `{MessageSubject}` was received and sent to `{MessageTo}` as `{From}`!", message?.Subject, message?.To, sendFrom);
 
         // Return email received successfully
         return SmtpResponse.Ok;

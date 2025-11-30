@@ -27,10 +27,9 @@ Relayway is built to solve the Microsoft 365 authentication challenge with minim
 Before deploying Relayway, make sure your environment meets the following requirements. These ensure full functionality across all features, especially Microsoft Graph integration and authentication.
 
 * [.NET 9+ Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/9.0)
-* Microsoft 365 Tenant with appropriate licensing
-* Admin access to create Azure app registrations
-* Valid sender address within your M365 tenant
-* Local filesystem access for configuration and token storage
+* A Microsoft 365 Tenant
+* A user with appropriate admin roles (Global Administrator, Privileged Role Administrator, Application Administrator, or Cloud Application Administrator) who can grant Application `Mail.Send`, `User.Read.All` and `MailboxSettings.Read` API permissions
+* The email address used as the SendFrom address must be a valid address within the tenant
 
 Ready to go? Then continue:
 
@@ -45,7 +44,7 @@ Create your Azure application registration to enable Microsoft Graph access.
 1. Navigate to [Azure App Registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)
 2. Click **New Registration**, enter a name, leave defaults
 3. Go to **API Permissions** → **Add a permission** → **Microsoft Graph** → **Application permissions**
-4. Add these permissions: `Mail.Send` and `User.Read.All`
+4. Add these permissions: `Mail.Send`,`User.Read.All` and `MailboxSettings.Read`. Finally, press 'Add permissions'.
 5. Click **Grant admin consent** for your tenant
 6. Navigate to **Certificates & secrets** → **Client secrets** → **New client secret**
 7. Set expiry to 24 months, copy the secret value immediately
@@ -125,6 +124,21 @@ services:
 ```
 
 ## 🔐 Configuration
+
+### Azure App Creation
+1. Go to the ['App registrations' section in Azure](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade).
+2. Click 'New Registration'.
+3. Enter a name and leave everything else as default.
+4. Navigate to 'API permissions' and click 'Add a permission'.
+5. Choose 'Microsoft Graph', then select 'Application permissions', then find `Mail.Send` and tick it. Do the same for `User.Read.All` and `MailboxSettings.Read`. Finally, press 'Add permissions'.
+6. Grant admin consent by clicking 'Grant admin consent for Tenant Name' (where Tenant Name is the name of your Microsoft 365 tenant). Hit 'Yes' at confirmation.
+7. Navigate to 'Certificates & secrets', choose the 'Client secrets' tab, then click 'New client secret', enter a description and set expiry to 24 months or a custom value.
+    > [!TIP]
+    > Set a reminder in your calendar now for 24 months' time to renew and update this secret.
+8. Copy the secret value and make note of it.
+    > [!IMPORTANT]
+    > The secret value is only displayed once.
+9. The Client ID and Tenant ID can be found in the overview tab.
 
 ### Environment Variables
 

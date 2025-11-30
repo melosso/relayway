@@ -1,17 +1,12 @@
-name: Manual Release Deployment
+name: Build And Push As Release
 
 on:
   workflow_dispatch:
     inputs:
-      release_type:
-        description: 'Type of release (major, minor, patch)'
+      tag_name:
+        description: 'Tag name (e.g. 2025.1.0)'
         required: true
-        default: 'patch'
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
+        type: string
 
 jobs:
   create-tag:

@@ -14,7 +14,6 @@ using ServiceProvider = SmtpServer.ComponentModel.ServiceProvider;
 Console.ForegroundColor = ConsoleColor.Cyan; 
 Console.WriteLine("Relayway");
 Console.WriteLine(Assembly.GetEntryAssembly()!.GetName().Version?.ToString(3));
-// Console.WriteLine("Relayway");
 Console.ForegroundColor = ConsoleColor.White;
 
 // Configuration

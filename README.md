@@ -12,7 +12,7 @@ Common applications that benefit from Relayway include monitoring systems, backu
 
 **Our goal**: Enable any application to send emails through Microsoft 365 without in-app OAuth complexity. 
 
-## 🧩 Key Features
+## Key Features
 
 Relayway is built to solve the Microsoft 365 authentication challenge with minimal complexity. Whether you're running legacy systems or modern applications, Relayway adapts to your infrastructure with secure, efficient email delivery.
 
@@ -22,7 +22,7 @@ Relayway is built to solve the Microsoft 365 authentication challenge with minim
 * **Cross-platform**: Available for Windows, Linux, and Docker environments
 * **Lightweight**: Minimal resource usage with efficient email processing
 
-## ⚙️ Requirements
+## Requirements
 
 Before deploying Relayway, make sure your environment meets the following requirements. These ensure full functionality across all features, especially Microsoft Graph integration and authentication.
 
@@ -33,7 +33,7 @@ Before deploying Relayway, make sure your environment meets the following requir
 
 Ready to go? Then continue:
 
-## 🚀 Getting Started
+## Getting Started
 
 Follow these steps to get Relayway up and running in your environment. Setup is fast and straightforward, making it easy to bridge your legacy applications with modern authentication.
 
@@ -184,7 +184,7 @@ docker run --network docker_default --rm -ti chko/swaks \
   --header "Subject: Test Email"
 ```
 
-## 📊 Logging
+## Logging
 
 Relayway provides comprehensive logging to help you monitor email delivery and troubleshoot issues.
 
@@ -195,7 +195,7 @@ Relayway provides comprehensive logging to help you monitor email delivery and t
 
 Log configuration follows [Serilog standards](https://github.com/serilog/serilog/wiki/Configuration-Basics#minimum-level) for flexible output formatting and destinations.
 
-## 🤝 Credits
+## Credits
 
 > [!NOTE]
 > This is a fork of [MustMail](https://github.com/bxdavies/MustMail) by u/bxdavies. 

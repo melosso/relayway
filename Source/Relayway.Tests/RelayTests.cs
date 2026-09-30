@@ -128,16 +128,158 @@ public class RelayTests
     [Fact]
     public async Task Oversized_message_is_refused_before_graph()
     {
-        await using RelayHarness relay = new();
-        BodyBuilder body = new() { TextBody = "big" };
-        body.Attachments.Add("big.bin", new byte[Relay.MaxMessageSize]);
-        MimeMessage message = Message();
-        message.Body = body.ToMessageBody();
+        await using RelayHarness relay = new(maxMessageSizeMb: 1);
+        MimeMessage message = WithAttachments(("big.bin", 1024 * 1024));
 
         SmtpCommandException ex = await Assert.ThrowsAsync<SmtpCommandException>(() => relay.SendAsync(message, "ann@contoso.test"));
 
         Assert.Equal(552, (int)ex.StatusCode);
         Assert.Equal(0, relay.Graph.Calls);
+    }
+
+    private static MimeMessage WithAttachments(params (string Name, int Size)[] files)
+    {
+        BodyBuilder body = new() { TextBody = "files" };
+        foreach ((string name, int size) in files)
+        {
+            byte[] content = new byte[size];
+            Random.Shared.NextBytes(content);
+            body.Attachments.Add(name, content);
+        }
+        MimeMessage message = Message("large");
+        message.Body = body.ToMessageBody();
+        return message;
+    }
+
+    private static byte[] Content(MimeMessage message, string name)
+    {
+        using MemoryStream stream = new();
+        message.Attachments.OfType<MimePart>().Single(p => p.FileName == name).Content!.DecodeTo(stream);
+        return stream.ToArray();
+    }
+
+    [Fact]
+    public async Task Large_message_is_sent_as_draft_with_upload_session()
+    {
+        await using RelayHarness relay = new();
+        MimeMessage message = WithAttachments(("large.bin", 5 * 1024 * 1024), ("small.txt", 1000));
+
+        await relay.SendAsync(message, "ann@contoso.test", "hidden@contoso.test");
+
+        Assert.Empty(relay.Graph.Sent);
+        JsonElement draft = Assert.Single(relay.Graph.Drafts);
+        Assert.Equal("large", draft.GetProperty("subject").GetString());
+        Assert.Equal(0, draft.GetProperty("attachments").GetArrayLength());
+        Assert.Equal("hidden@contoso.test", draft.GetProperty("bccRecipients")[0].GetProperty("emailAddress").GetProperty("address").GetString());
+        Assert.Equal(Content(message, "large.bin"), relay.Graph.DraftAttachments["large.bin"]);
+        Assert.Equal(Content(message, "small.txt"), relay.Graph.DraftAttachments["small.txt"]);
+        Assert.Equal(["draft-1"], relay.Graph.DraftsSent);
+        Assert.Empty(relay.Graph.DraftsDeleted);
+    }
+
+    [Fact]
+    public async Task Message_under_4_mb_uses_sendmail_without_mail_readwrite()
+    {
+        await using RelayHarness relay = new();
+
+        await relay.SendAsync(WithAttachments(("mid.bin", 2_500_000)), "ann@contoso.test");
+
+        Assert.Single(relay.Graph.Sent);
+        Assert.Empty(relay.Graph.Drafts);
+    }
+
+    [Fact]
+    public async Task Sendmail_413_falls_back_to_draft()
+    {
+        await using RelayHarness relay = new();
+        relay.Graph.Status = call => call == 1 ? HttpStatusCode.RequestEntityTooLarge : HttpStatusCode.OK;
+
+        await relay.SendAsync(WithAttachments(("mid.bin", 2_500_000)), "ann@contoso.test");
+
+        Assert.Empty(relay.Graph.Sent);
+        JsonElement draft = Assert.Single(relay.Graph.Drafts);
+        Assert.Equal("large", draft.GetProperty("subject").GetString());
+        Assert.Equal("ann@contoso.test", draft.GetProperty("toRecipients")[0].GetProperty("emailAddress").GetProperty("address").GetString());
+        Assert.Equal(["draft-1"], relay.Graph.DraftsSent);
+        Assert.Equal(["mid.bin"], relay.Graph.DraftAttachments.Keys);
+    }
+
+    [Fact]
+    public async Task Failed_upload_deletes_draft_and_asks_client_to_retry()
+    {
+        await using RelayHarness relay = new();
+        relay.Graph.Status = call => call is >= 2 and <= 5 ? HttpStatusCode.ServiceUnavailable : HttpStatusCode.OK;
+
+        SmtpCommandException ex = await Assert.ThrowsAsync<SmtpCommandException>(() => relay.SendAsync(WithAttachments(("large.bin", 4 * 1024 * 1024)), "ann@contoso.test"));
+
+        Assert.Equal(451, (int)ex.StatusCode);
+        Assert.Equal(["draft-1"], relay.Graph.DraftsDeleted);
+        Assert.Empty(relay.Graph.DraftsSent);
+    }
+
+    [Fact]
+    public async Task Large_message_without_mail_readwrite_is_refused()
+    {
+        await using RelayHarness relay = new();
+        relay.Graph.Status = _ => HttpStatusCode.Forbidden;
+
+        SmtpCommandException ex = await Assert.ThrowsAsync<SmtpCommandException>(() => relay.SendAsync(WithAttachments(("large.bin", 4 * 1024 * 1024)), "ann@contoso.test"));
+
+        Assert.Equal(554, (int)ex.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("127.0.0.0/8", true)]
+    [InlineData("127.0.0.1", true)]
+    [InlineData("10.0.0.0/8", false)]
+    public async Task Allowed_networks_decide_which_clients_may_send(string network, bool accepted)
+    {
+        await using RelayHarness relay = new(allowedNetworks: [network]);
+
+        Task send = relay.SendAsync(Message(), "ann@contoso.test");
+
+        if (accepted)
+        {
+            await send;
+            Assert.Single(relay.Graph.Sent);
+        }
+        else
+        {
+            SmtpCommandException ex = await Assert.ThrowsAsync<SmtpCommandException>(() => send);
+            Assert.Equal(550, (int)ex.StatusCode);
+            Assert.Equal(0, relay.Graph.Calls);
+        }
+    }
+
+    [Theory]
+    [InlineData("300.1.1.1")]
+    [InlineData("lan")]
+    [InlineData("10.0.0.0/33")]
+    public void Invalid_allowed_network_names_the_entry(string entry)
+    {
+        FormatException ex = Assert.Throws<FormatException>(() => Relay.ParseNetworks(["10.0.0.0/8", entry]));
+
+        Assert.Contains($"'{entry}'", ex.Message);
+    }
+
+    [Fact]
+    public void Allowed_networks_accept_addresses_and_ipv6()
+    {
+        IPNetwork[] networks = Relay.ParseNetworks([" 10.0.0.5 ", "fd00::/8", "::1", "192.168.1.5/24"]);
+
+        Assert.Equal(["10.0.0.5/32", "fd00::/8", "::1/128"], networks[..3].Select(n => n.ToString()));
+        Assert.True(networks[3].Contains(IPAddress.Parse("192.168.1.77")));
+        Assert.False(networks[3].Contains(IPAddress.Parse("192.168.2.1")));
+    }
+
+    [Fact]
+    public async Task Unspecified_address_listens()
+    {
+        await using RelayHarness relay = new("0.0.0.0");
+
+        await relay.SendAsync(Message(), "ann@contoso.test");
+
+        Assert.Single(relay.Graph.Sent);
     }
 
     [Fact]

@@ -5,8 +5,8 @@ namespace Relayway.Tests;
 
 public class DockerTests
 {
-    private const string Image = "relayway:test";
-    private static readonly Lazy<Task<(int Code, string Output)>> Build = new(() => Docker("build", "-t", Image, RepoRoot()));
+    internal const string Image = "relayway:test";
+    internal static readonly Lazy<Task<(int Code, string Output)>> Build = new(() => Docker("build", "-t", Image, RepoRoot()));
 
     private static string RepoRoot()
     {
@@ -18,7 +18,7 @@ public class DockerTests
         return dir.FullName;
     }
 
-    private static async Task<(int Code, string Output)> Docker(params string[] args)
+    internal static async Task<(int Code, string Output)> Docker(params string[] args)
     {
         ProcessStartInfo info = new("docker") { RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (string arg in args)
@@ -33,7 +33,7 @@ public class DockerTests
         return (process.ExitCode, await stdout + await stderr);
     }
 
-    private static async Task RequireDocker()
+    internal static async Task RequireDocker()
     {
         try
         {
@@ -76,6 +76,27 @@ public class DockerTests
 
         Assert.Equal(1, code);
         Assert.Contains("Missing configuration", output);
+    }
+
+    [Fact]
+    public async Task Image_refuses_loopback_host_before_contacting_graph()
+    {
+        await RequireDocker();
+        (int buildCode, string buildOutput) = await Build.Value;
+        Assert.True(buildCode == 0, buildOutput);
+
+        (int code, string output) = await Docker("run", "--rm", "--network", "none",
+            "-e", "Smtp__Host=localhost",
+            "-e", "Graph__TenantId=00000000-0000-0000-0000-000000000000",
+            "-e", "Graph__ClientId=00000000-0000-0000-0000-000000000000",
+            "-e", "Graph__ClientSecret=not-a-secret",
+            "-e", "SendFrom=relay@contoso.test",
+            Image);
+
+        Assert.Equal(1, code);
+        Assert.Contains("Smtp:Host localhost resolves to", output);
+        Assert.Contains("Smtp__Host=0.0.0.0", output);
+        Assert.DoesNotContain("Cannot verify SendFrom", output);
     }
 
     [Fact]

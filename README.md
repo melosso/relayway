@@ -28,7 +28,7 @@ Before deploying Relayway, make sure your environment meets the following requir
 
 * [.NET 10 Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
 * A Microsoft 365 Tenant
-* A user with appropriate admin roles (Global Administrator, Privileged Role Administrator, Application Administrator, or Cloud Application Administrator) who can grant Application `Mail.Send` and `User.Read.All` API permissions
+* A user with appropriate admin roles (Global Administrator, Privileged Role Administrator, Application Administrator, or Cloud Application Administrator) who can grant Application `Mail.Send`, `User.Read.All` and, for messages of 4 MB or more, `Mail.ReadWrite` API permissions
 * The email address used as the SendFrom address must be a valid address within the tenant
 
 Ready to go? Then continue:
@@ -44,7 +44,7 @@ Create your Azure application registration to enable Microsoft Graph access.
 1. Navigate to [Azure App Registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)
 2. Click **New Registration**, enter a name, leave defaults
 3. Go to **API Permissions** > **Add a permission** > **Microsoft Graph** > **Application permissions**
-4. Add these permissions: `Mail.Send` and `User.Read.All`. Finally, press 'Add permissions'.
+4. Add these permissions: `Mail.Send`, `User.Read.All` and `Mail.ReadWrite` (messages of 4 MB or more are sent as a draft). Finally, press 'Add permissions'.
 5. Click **Grant admin consent** for your tenant
 6. Navigate to **Certificates & secrets** > **Client secrets** > **New client secret**
 7. Set expiry to 24 months, copy the secret value immediately
@@ -129,7 +129,7 @@ services:
 2. Click 'New Registration'.
 3. Enter a name and leave everything else as default.
 4. Navigate to 'API permissions' and click 'Add a permission'.
-5. Choose 'Microsoft Graph', then select 'Application permissions', then find `Mail.Send` and tick it. Do the same for `User.Read.All`. Finally, press 'Add permissions'.
+5. Choose 'Microsoft Graph', then select 'Application permissions', then find `Mail.Send` and tick it. Do the same for `User.Read.All` and `Mail.ReadWrite`. Finally, press 'Add permissions'.
 6. Grant admin consent by clicking 'Grant admin consent for Tenant Name' (where Tenant Name is the name of your Microsoft 365 tenant). Hit 'Yes' at confirmation.
 7. Navigate to 'Certificates & secrets', choose the 'Client secrets' tab, then click 'New client secret', enter a description and set expiry to 24 months or a custom value.
     > [!TIP]
@@ -153,6 +153,19 @@ Graph__ClientSecret=your-client-secret
 SendFrom=your-sender-address@mycompany.com
 ```
 
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `SendFrom` | required | Mailbox that sends every message |
+| `Graph:TenantId`, `Graph:ClientId`, `Graph:ClientSecret` | required | App registration |
+| `Graph:Cloud` | `Global` | `Global`, `USGovernment` (GCC High), `USGovernmentDoD` or `China` |
+| `Smtp:Host` | `localhost` | Bind address |
+| `Smtp:Port` | `2525` | Bind port |
+| `Smtp:AllowedNetworks` | any | Client addresses or CIDR networks allowed to send, e.g. `Smtp__AllowedNetworks__0=192.168.1.0/24` |
+| `Smtp:MaxMessageSizeMb` | `35` | Largest accepted message, 1 to 150; match the Exchange Online `MaxSendSize` of `SendFrom` |
+| `LogLevel` | `Information` | Serilog minimum level |
+
+Messages under 4 MB go through Graph `sendMail`. Larger messages, and messages Graph rejects with 413, are created as a draft in `SendFrom`, attachments of 3 MB or more are uploaded in chunks, and the draft is sent. This path needs `Mail.ReadWrite`. Both `Mail.Send` and `Mail.ReadWrite` apply to every mailbox in the tenant unless limited with [RBAC for Applications](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac) to `SendFrom`.
+
 ### Application Configuration
 
 Configure your legacy applications to use Relayway as their SMTP server:
@@ -175,7 +188,7 @@ SMTP_AUTH=false
 | `2525:2525` | All networks of the Docker host |
 | none | Containers on the same Docker network |
 
-Relayway has no SMTP authentication. Any client that reaches the port sends as `SendFrom`.
+Relayway has no SMTP authentication. Any client that reaches the port sends as `SendFrom`, unless `Smtp:AllowedNetworks` is set. In Docker, clients on the Docker host connect from the bridge gateway address (for example `172.17.0.1`).
 
 ### SMTP replies
 
@@ -183,8 +196,9 @@ Relayway has no SMTP authentication. Any client that reaches the port sends as `
 | --- | --- | --- |
 | `250` | Graph accepted the message | None |
 | `451` | Graph 429 or 5xx after SDK retries, network or token failure | Retry |
-| `552` | Message over 4 MB (Graph `sendMail` limit) | None |
-| `554` | Graph 4xx, or invalid MIME | None |
+| `550` | Client address not in `Smtp:AllowedNetworks` | None |
+| `552` | Message over `Smtp:MaxMessageSizeMb` | None |
+| `554` | Graph 4xx (403 on messages of 4 MB or more: `Mail.ReadWrite` missing), or invalid MIME | None |
 
 ### Testing
 
@@ -209,6 +223,8 @@ RELAYWAY_STRESS=1 dotnet test --project Source/Relayway.Tests -- --filter-trait 
 ```
 
 Tests run an in-process SMTP server against a fake Graph endpoint. Docker tests (skipped without a Docker daemon) build the image, check startup against Microsoft Entra ID with invalid credentials, and send through the relay with `swaks`.
+
+Live tests send through a real tenant, over both the `sendMail` and the draft path, and through the Docker image on a published port. They run when `RELAYWAY_LIVE_TENANT_ID`, `RELAYWAY_LIVE_CLIENT_ID`, `RELAYWAY_LIVE_CLIENT_SECRET`, `RELAYWAY_LIVE_SEND_FROM` and `RELAYWAY_LIVE_RECIPIENT` are set (optional: `RELAYWAY_LIVE_CLOUD`), and are not part of CI. Use an app registration and mailbox in a tenant you control.
 
 ## Logging
 

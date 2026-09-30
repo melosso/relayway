@@ -46,11 +46,36 @@ if (config?.Graph is not { TenantId.Length: > 0, ClientId.Length: > 0, ClientSec
     return 1;
 }
 
-Log.Information("Tenant {TenantId}, client {ClientId}, sending as {SendFrom}", config.Graph.TenantId, config.Graph.ClientId, config.SendFrom);
+if (!GraphCloud.All.TryGetValue(config.Graph.Cloud, out GraphCloud? cloud))
+{
+    Log.Fatal("Graph:Cloud {Cloud} is not one of {Clouds}", config.Graph.Cloud, string.Join(", ", GraphCloud.All.Keys));
+    return 1;
+}
 
-GraphServiceClient graphClient = new(
-    new ClientSecretCredential(config.Graph.TenantId, config.Graph.ClientId, config.Graph.ClientSecret),
-    ["https://graph.microsoft.com/.default"]);
+if (config.Smtp.MaxMessageSizeMb is < 1 or > 150)
+{
+    Log.Fatal("Smtp:MaxMessageSizeMb {Size} is outside 1 to 150, the Exchange Online message size range", config.Smtp.MaxMessageSizeMb);
+    return 1;
+}
+
+System.Net.IPAddress[] bound;
+try
+{
+    bound = Relay.Resolve(config.Smtp.Host);
+}
+catch (Exception ex) when (ex is System.Net.Sockets.SocketException or ArgumentException)
+{
+    Log.Fatal("Cannot resolve Smtp:Host {Host}: {Error}", config.Smtp.Host, ex.Message);
+    return 1;
+}
+if (Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true" && bound.All(System.Net.IPAddress.IsLoopback))
+{
+    Log.Fatal("Smtp:Host {Host} resolves to {Addresses}, the container's loopback interface. Published ports (-p {Port}:{Port}) and other containers arrive on the container's network interface and get connection refused. Remove Smtp__Host or set Smtp__Host=0.0.0.0", config.Smtp.Host, string.Join(", ", bound.Select(a => a.ToString())), config.Smtp.Port);
+    return 1;
+}
+Log.Information("Tenant {TenantId}, client {ClientId}, cloud {Cloud}, sending as {SendFrom}", config.Graph.TenantId, config.Graph.ClientId, config.Graph.Cloud, config.SendFrom);
+
+(GraphServiceClient graphClient, Microsoft.Kiota.Abstractions.IRequestAdapter uploadAdapter) = cloud.Connect(config.Graph.TenantId!, config.Graph.ClientId!, config.Graph.ClientSecret!);
 
 try
 {
@@ -70,7 +95,12 @@ catch (Exception ex)
 SmtpServer.SmtpServer server;
 try
 {
-    server = Relay.CreateServer(config.Smtp, new MessageHandler(graphClient, Log.ForContext<MessageHandler>(), config.SendFrom));
+    server = Relay.CreateServer(config.Smtp, new MessageHandler(graphClient, uploadAdapter, Log.ForContext<MessageHandler>(), config.SendFrom), Log.ForContext<ClientFilter>());
+}
+catch (FormatException ex)
+{
+    Log.Fatal(ex.Message);
+    return 1;
 }
 catch (Exception ex) when (ex is System.Net.Sockets.SocketException or ArgumentException)
 {
@@ -78,12 +108,7 @@ catch (Exception ex) when (ex is System.Net.Sockets.SocketException or ArgumentE
     return 1;
 }
 
-System.Net.IPAddress[] bound = System.Net.Dns.GetHostAddresses(config.Smtp.Host);
-Log.Information("SMTP server listening on {Addresses} port {Port}", string.Join(", ", bound.Select(a => a.ToString())), config.Smtp.Port);
-if (Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true" && bound.All(System.Net.IPAddress.IsLoopback))
-{
-    Log.Warning("Smtp:Host {Host} resolves to {Addresses}, the container's loopback interface. Published ports (-p {Port}:{Port}) and other containers arrive on the container's network interface and get connection refused. Set Smtp__Host=0.0.0.0 to listen on all container interfaces", config.Smtp.Host, string.Join(", ", bound.Select(a => a.ToString())), config.Smtp.Port);
-}
+Log.Information("SMTP server listening on {Addresses} port {Port}, clients {Allowed}, max {Size} MB", string.Join(", ", bound.Select(a => a.ToString())), config.Smtp.Port, config.Smtp.AllowedNetworks.Length == 0 ? "any" : string.Join(", ", config.Smtp.AllowedNetworks), config.Smtp.MaxMessageSizeMb);
 
 try
 {

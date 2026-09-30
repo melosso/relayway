@@ -159,7 +159,7 @@ Set each setting in `appsettings.json`, `.env` or the environment.
 | `Graph:TenantId` | `RELAYWAY_TENANT_ID` | required | App registration tenant |
 | `Graph:ClientId` | `RELAYWAY_CLIENT_ID` | required | App registration client |
 | `Graph:ClientSecret` | `RELAYWAY_CLIENT_SECRET` | required | App registration secret |
-| `Graph:Cloud` | `RELAYWAY_CLOUD` | `Global` | `Global`, `USGovernment` (GCC High), `USGovernmentDoD` or `China` |
+| `Graph:Cloud` | `RELAYWAY_CLOUD` | `Global` | `Global` (including EU tenants), `USGovernment` (GCC High), `USGovernmentDoD` or `China` |
 | `Smtp:Host` | `RELAYWAY_SMTP_HOST` | `localhost` (`0.0.0.0` in Docker) | Bind address |
 | `Smtp:Port` | `RELAYWAY_SMTP_PORT` | `2525` | Bind port |
 | `Smtp:AllowedNetworks` | `RELAYWAY_ALLOWED_NETWORKS` | any | Comma-separated addresses or CIDR networks allowed to send, e.g. `192.168.1.0/24,10.0.0.5` |

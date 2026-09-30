@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Relayway.Tests/Relayway.Tests.csproj" />
+  <Project Path="Relayway/Relayway.csproj" />
+</Solution>

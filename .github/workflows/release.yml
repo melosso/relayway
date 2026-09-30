@@ -1,81 +1,176 @@
-name: Build And Push As Release
+name: Build and Push As Release
+
 on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag name (e.g. 2025.1.0)'
+        description: 'Tag name (e.g. 2026.10.0)'
         required: true
         type: string
+
+permissions:
+  contents: read
+
 jobs:
-  create-tag:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  tag:
+    name: Bump version and tag
+    needs: test
     runs-on: ubuntu-latest
-    outputs:
-      new_version: ${{ steps.versioning.outputs.new_version }}
+    permissions:
+      contents: write
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    - name: Set version from input
-      id: versioning
-      run: |
-        echo "new_version=${{ github.event.inputs.tag_name }}" >> $GITHUB_OUTPUT
-    - name: Create and push new tag
-      run: |
-        NEW_TAG=${{ steps.versioning.outputs.new_version }}
-        git config user.name github-actions
-        git config user.email github-actions@github.com
-        git tag -f "$NEW_TAG"
-        git push origin --force "refs/tags/$NEW_TAG"
-  build-releases:
-    needs: create-tag
-    name: Build Release
-    strategy:
-      matrix:
-        kind: ['linux', 'windows', 'macOS']
-        include:
-          - kind: linux
-            os: ubuntu-latest
-            target: linux-x64
-          - kind: windows
-            os: windows-latest
-            target: win-x64
-          - kind: macOS
-            os: macos-latest
-            target: osx-x64
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup dotnet
-        uses: actions/setup-dotnet@v4
+      - name: Checkout repository
+        uses: actions/checkout@v7
         with:
-          dotnet-version: 9.0.x
-      - name: Build
-        shell: bash
+          fetch-depth: 0
+
+      - name: Bump version and create tag
         run: |
-          release_name="Relayway-${{ needs.create-tag.outputs.new_version }}-${{ matrix.target }}"
-          # Build everything
-          dotnet publish Relayway.csproj --framework net9.0 --runtime "${{ matrix.target }}" -c Release -o "$release_name" -p:PublishSingleFile=true --self-contained false 
-          
-          # Add version file
-          echo "${{ needs.create-tag.outputs.new_version }}" > "$release_name/version.txt"
-          # Pack files
-          if [ "${{ matrix.target }}" == "win-x64" ]; then
-            # Add Windows-specific files if they exist
-            [ -f "Relayway.xml" ] && cp "Relayway.xml" "$release_name/"
-            # Pack to zip for Windows
-            7z a -tzip "${release_name}.zip" "./${release_name}/*"
-          else
-            tar czvf "${release_name}.tar.gz" "$release_name"
-          fi
-          # Delete output directory
-          rm -r "$release_name"
-      - name: Upload Release Asset
-        uses: softprops/action-gh-release@v1
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          VERSION="${{ inputs.tag_name }}"
+          sed -i "s|<Version>.*</Version>|<Version>${VERSION}</Version>|" Source/Directory.Build.props
+          git add Source/Directory.Build.props
+          git commit -m "chore: bump version to ${VERSION}" || echo "Version already set to ${VERSION}, nothing to commit"
+          git push
+          git tag -a "${VERSION}" -m "Release ${VERSION}"
+          git push origin "${VERSION}"
+
+  build:
+    name: Build ${{ matrix.rid }}
+    needs: tag
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: linux-x64
+            archive: tar.gz
+          - rid: linux-arm64
+            archive: tar.gz
+          - rid: win-x64
+            archive: zip
+          - rid: osx-arm64
+            archive: tar.gz
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
         with:
-          tag_name: ${{ needs.create-tag.outputs.new_version }}
-          files: "Relayway-*"
-          generate_release_notes: true
+          ref: ${{ inputs.tag_name }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Publish application
+        run: |
+          dotnet publish Source/Relayway/Relayway.csproj \
+            -c Release \
+            -r ${{ matrix.rid }} \
+            --self-contained false \
+            -p:PublishSingleFile=true \
+            -p:DebugType=None \
+            -p:DebugSymbols=false \
+            -o build-output
+
+      - name: Create deployment structure
+        run: |
+          cp LICENSE build-output/LICENSE.txt
+          echo "https://github.com/${{ github.repository }}" > build-output/source.txt
+          if [ "${{ matrix.rid }}" = "win-x64" ]; then cp Relayway.xml build-output/; fi
+
+      - name: Create version file
+        run: |
+          echo "${{ inputs.tag_name }}" > build-output/version.txt
+          echo "Built: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> build-output/version.txt
+          echo "Commit: $(git rev-parse HEAD)" >> build-output/version.txt
+
+      - name: Create deployment archive
+        run: |
+          NAME="Relayway-${{ inputs.tag_name }}-${{ matrix.rid }}"
+          cd build-output
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            zip -r "../${NAME}.zip" .
+          else
+            tar -czf "../${NAME}.tar.gz" .
+          fi
+          cd ..
+          sha256sum "${NAME}.${{ matrix.archive }}" > "${NAME}.${{ matrix.archive }}.sha256"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: relayway-${{ inputs.tag_name }}-${{ matrix.rid }}
+          path: Relayway-${{ inputs.tag_name }}-${{ matrix.rid }}.*
+          retention-days: 90
+
+  image:
+    needs: tag
+    uses: ./.github/workflows/release-package.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      tag_name: ${{ inputs.tag_name }}
+
+  release:
+    name: Publish release
+    needs: [build, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag_name }}
+          fetch-depth: 0
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: relayway-${{ inputs.tag_name }}-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate release notes
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          TAG="${{ inputs.tag_name }}"
+          REPO="${{ github.server_url }}/${{ github.repository }}"
+
+          git log ${PREV_TAG:+${PREV_TAG}..}HEAD --no-merges --format="%s by @%an in %h" \
+            | grep -v '^chore: bump version to ' > commits.txt || true
+
+          {
+            echo "### What's Changed"
+            for type in feat fix refactor security chore; do
+              grep -E "^${type}(\(.*\))?!?:" commits.txt || true
+            done
+            grep -vE '^(feat|fix|refactor|security|chore)(\(.*\))?!?:' commits.txt || true
+          } | sed '2,$s/^/* /' > release_notes.md
+
+          echo "" >> release_notes.md
+          echo "Image: \`ghcr.io/${{ github.repository }}:${TAG}\`" >> release_notes.md
+          echo "" >> release_notes.md
+          if [ -n "$PREV_TAG" ]; then
+            echo "**Full Changelog**: ${REPO}/compare/${PREV_TAG}...${TAG}" >> release_notes.md
+          else
+            echo "**Full Changelog**: ${REPO}/commits/${TAG}" >> release_notes.md
+          fi
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ inputs.tag_name }}
+          name: ${{ inputs.tag_name }}
+          body_path: release_notes.md
+          files: dist/*
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

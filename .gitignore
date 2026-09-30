@@ -64,6 +64,13 @@ ScaffoldingReadMe.txt
 # StyleCop
 StyleCopReport.xml
 
+# User files
+*.md
+!README.md
+!BUILD.md
+!CONTRIBUTING.md
+!SECURITY.md
+
 # Files built by Visual Studio
 *_i.c
 *_p.c
@@ -479,3 +486,7 @@ $RECYCLE.BIN/
 # Rider IDE Config
 .idea/
 /Properties/launchSettings.json
+
+.env
+*.env
+client_secret.txt

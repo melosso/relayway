@@ -64,6 +64,13 @@ ScaffoldingReadMe.txt
 # StyleCop
 StyleCopReport.xml
 
+# User files
+*.md
+!README.md
+!BUILD.md
+!CONTRIBUTING.md
+!SECURITY.md
+
 # Files built by Visual Studio
 *_i.c
 *_p.c

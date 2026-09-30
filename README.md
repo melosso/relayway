@@ -8,7 +8,7 @@
 
 Common applications that benefit from Relayway include monitoring systems, backup software, legacy ERP systems, and any application that needs to send notifications via email without OAuth support.
 
-> ✨ [Releases](https://github.com/melosso/relayway/releases) | 📦 [Packages](https://github.com/melosso/relayway/packages)
+> [Releases](https://github.com/melosso/relayway/releases) | [Packages](https://github.com/melosso/relayway/packages)
 
 **Our goal**: Enable any application to send emails through Microsoft 365 without in-app OAuth complexity. 
 
@@ -18,7 +18,7 @@ Relayway is built to solve the Microsoft 365 authentication challenge with minim
 
 * **Zero-config**: Applications connect to localhost:2525 with no authentication required
 * **Bridge**: Automatically handles Microsoft Graph authentication and token management
-* **Secure**: Only accepts connections from localhost, eliminating network security concerns
+* **Closed by default**: Listens on `localhost` only unless `Smtp:Host` is configured
 * **Cross-platform**: Available for Windows, Linux, and Docker environments
 * **Lightweight**: Minimal resource usage with efficient email processing
 
@@ -26,9 +26,9 @@ Relayway is built to solve the Microsoft 365 authentication challenge with minim
 
 Before deploying Relayway, make sure your environment meets the following requirements. These ensure full functionality across all features, especially Microsoft Graph integration and authentication.
 
-* [.NET 9+ Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/9.0)
+* [.NET 10 Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
 * A Microsoft 365 Tenant
-* A user with appropriate admin roles (Global Administrator, Privileged Role Administrator, Application Administrator, or Cloud Application Administrator) who can grant Application `Mail.Send`, `User.Read.All` and `MailboxSettings.Read` API permissions
+* A user with appropriate admin roles (Global Administrator, Privileged Role Administrator, Application Administrator, or Cloud Application Administrator) who can grant Application `Mail.Send` and `User.Read.All` API permissions
 * The email address used as the SendFrom address must be a valid address within the tenant
 
 Ready to go? Then continue:
@@ -43,10 +43,10 @@ Create your Azure application registration to enable Microsoft Graph access.
 
 1. Navigate to [Azure App Registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)
 2. Click **New Registration**, enter a name, leave defaults
-3. Go to **API Permissions** → **Add a permission** → **Microsoft Graph** → **Application permissions**
-4. Add these permissions: `Mail.Send`,`User.Read.All` and `MailboxSettings.Read`. Finally, press 'Add permissions'.
+3. Go to **API Permissions** > **Add a permission** > **Microsoft Graph** > **Application permissions**
+4. Add these permissions: `Mail.Send` and `User.Read.All`. Finally, press 'Add permissions'.
 5. Click **Grant admin consent** for your tenant
-6. Navigate to **Certificates & secrets** → **Client secrets** → **New client secret**
+6. Navigate to **Certificates & secrets** > **Client secrets** > **New client secret**
 7. Set expiry to 24 months, copy the secret value immediately
 8. Note your **Client ID** and **Tenant ID** from the Overview tab
 
@@ -56,7 +56,7 @@ Grab the [latest release](https://github.com/melosso/relayway/releases/latest) a
 
 ## Installation
 > [!CAUTION]
-> Do not set SMTP Host to anything other than `localhost` because the server does not have authentication or encryption!
+> Relayway has no SMTP authentication or TLS. Every host that can reach the listen address can send mail as `SendFrom`. Keep `Smtp:Host` on `localhost`, or restrict access by firewall or Docker network when listening on other interfaces.
 
 ### 3. Configuration
 
@@ -86,7 +86,7 @@ Define your Microsoft Graph and SMTP settings to enable email relay functionalit
 
 Extract to `C:\Relayway` and run the executable. For automatic startup, import the included `Relayway.xml` into Task Scheduler.
 
-## 🐳 Docker Deployment
+## Docker Deployment
 
 For containerized environments, Relayway provides ready-to-use Docker images with environment variable configuration.
 
@@ -96,8 +96,7 @@ For containerized environments, Relayway provides ready-to-use Docker images wit
 docker run -d \
   --name relayway \
   -e LogLevel=Warning \
-  -e Smtp__Host=localhost \
-  -e Smtp__Port=2525 \
+  -p 127.0.0.1:2525:2525 \
   -e Graph__TenantId="your-tenant-id" \
   -e Graph__ClientId="your-client-id" \
   -e Graph__ClientSecret="your-client-secret" \
@@ -112,10 +111,10 @@ services:
   relayway:
     image: ghcr.io/melosso/relayway
     container_name: relayway
+    ports:
+      - "127.0.0.1:2525:2525"
     environment:
       - LogLevel=Warning
-      - Smtp__Host=localhost
-      - Smtp__Port=2525
       - Graph__TenantId=your-tenant-id
       - Graph__ClientId=your-client-id
       - Graph__ClientSecret=your-client-secret
@@ -123,14 +122,14 @@ services:
     restart: unless-stopped
 ```
 
-## 🔐 Configuration
+## Configuration
 
 ### Azure App Creation
 1. Go to the ['App registrations' section in Azure](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade).
 2. Click 'New Registration'.
 3. Enter a name and leave everything else as default.
 4. Navigate to 'API permissions' and click 'Add a permission'.
-5. Choose 'Microsoft Graph', then select 'Application permissions', then find `Mail.Send` and tick it. Do the same for `User.Read.All` and `MailboxSettings.Read`. Finally, press 'Add permissions'.
+5. Choose 'Microsoft Graph', then select 'Application permissions', then find `Mail.Send` and tick it. Do the same for `User.Read.All`. Finally, press 'Add permissions'.
 6. Grant admin consent by clicking 'Grant admin consent for Tenant Name' (where Tenant Name is the name of your Microsoft 365 tenant). Hit 'Yes' at confirmation.
 7. Navigate to 'Certificates & secrets', choose the 'Client secrets' tab, then click 'New client secret', enter a description and set expiry to 24 months or a custom value.
     > [!TIP]
@@ -168,7 +167,24 @@ SMTP_AUTH=false
 
 ### Security Considerations
 
-Relayway is designed with security in mind by only accepting local connections. Always use `localhost` as your SMTP host, as Relayway has no built-in authentication or encryption by design — this is intentional for local-only usage.
+`Smtp:Host` is the bind address: `localhost` binds loopback, `0.0.0.0` binds all interfaces. The Docker image defaults to `Smtp__Host=0.0.0.0`; the publish address sets exposure:
+
+| Publish | Reachable from |
+| --- | --- |
+| `127.0.0.1:2525:2525` | Docker host |
+| `2525:2525` | All networks of the Docker host |
+| none | Containers on the same Docker network |
+
+Relayway has no SMTP authentication. Any client that reaches the port sends as `SendFrom`.
+
+### SMTP replies
+
+| Reply | Cause | Client action |
+| --- | --- | --- |
+| `250` | Graph accepted the message | None |
+| `451` | Graph 429 or 5xx after SDK retries, network or token failure | Retry |
+| `552` | Message over 4 MB (Graph `sendMail` limit) | None |
+| `554` | Graph 4xx, or invalid MIME | None |
 
 ### Testing
 
@@ -183,6 +199,16 @@ docker run --network docker_default --rm -ti chko/swaks \
   --port 2525 \
   --header "Subject: Test Email"
 ```
+
+## Development
+
+```bash
+dotnet build Source/Relayway.slnx
+dotnet test --project Source/Relayway.Tests
+RELAYWAY_STRESS=1 dotnet test --project Source/Relayway.Tests -- --filter-trait "Category=Stress"
+```
+
+Tests run an in-process SMTP server against a fake Graph endpoint. Docker tests (skipped without a Docker daemon) build the image, check startup against Microsoft Entra ID with invalid credentials, and send through the relay with `swaks`.
 
 ## Logging
 

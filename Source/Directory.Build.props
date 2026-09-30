@@ -1,0 +1,22 @@
+<Project>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Version>2025.11.0</Version>
+    <Authors>Relayway</Authors>
+    <Company>Melosso</Company>
+    <Product>Relayway</Product>
+    <Copyright>Copyright $([System.DateTime]::Now.Year) Melosso</Copyright>
+    <RepositoryUrl>https://github.com/melosso/relayway</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
+  </PropertyGroup>
+
+</Project>

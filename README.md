@@ -261,4 +261,4 @@ Contributions are welcome, please submit a PR if you'd like to help improve Rela
 
 ## License
 
-This project is licensed under the GNU 3.0 license (AGPL-3.0). See [LICENSE](LICENSE) for full details.
+Licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0), as is [MustMail](https://github.com/bxdavies/MustMail), from which Relayway is forked.

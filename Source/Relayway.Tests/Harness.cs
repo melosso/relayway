@@ -22,6 +22,7 @@ public sealed class FakeGraph : HttpMessageHandler
     public ConcurrentQueue<string> DraftsDeleted { get; } = new();
     public Func<int, HttpStatusCode> Status { get; set; } = _ => HttpStatusCode.OK;
     public bool KeepBodies { get; set; } = true;
+    public bool OmitUploadLocation { get; set; }
     private readonly ConcurrentDictionary<string, (string Name, MemoryStream Content, long Size)> _uploads = new();
     private int _calls;
     private int _drafts;
@@ -84,7 +85,7 @@ public sealed class FakeGraph : HttpMessageHandler
         }
         if (request.Method == HttpMethod.Get)
         {
-            return Reply(request, HttpStatusCode.OK, """{"id":"user","mail":"relay@contoso.test"}""");
+            return Reply(request, HttpStatusCode.OK, """{"id":"user","mail":"relay@lidlcloud.test"}""");
         }
         return Reply(request, HttpStatusCode.NotFound, """{"error":{"code":"NotFound","message":"fake route missing"}}""");
     }
@@ -99,7 +100,10 @@ public sealed class FakeGraph : HttpMessageHandler
         }
         DraftAttachments[name] = content.ToArray();
         HttpResponseMessage done = Reply(request, HttpStatusCode.Created, "");
-        done.Headers.Location = new Uri($"https://graph.test/attachments/{name}");
+        if (!OmitUploadLocation)
+        {
+            done.Headers.Location = new Uri($"https://graph.test/attachments/{name}");
+        }
         return done;
     }
 
@@ -117,38 +121,36 @@ public sealed class FakeGraph : HttpMessageHandler
 
 public sealed class RelayHarness : IAsyncDisposable
 {
-    public const string SendFrom = "relay@contoso.test";
+    public const string SendFrom = "relay@lidlcloud.test";
     public FakeGraph Graph { get; } = new();
     public int Port { get; }
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _run;
 
-    public RelayHarness(string host = "127.0.0.1", string[]? allowedNetworks = null, int maxMessageSizeMb = 35, GraphServiceClient? graph = null, IRequestAdapter? uploads = null, string sendFrom = SendFrom)
+    public RelayHarness(string host = "127.0.0.1", string allowedNetworks = "", int maxMessageSizeMb = 35, GraphServiceClient? graph = null, IRequestAdapter? uploads = null, string sendFrom = SendFrom)
     {
-        Port = FreePort();
         HttpClient http = GraphClientFactory.Create(finalHandler: Graph);
         graph ??= new GraphServiceClient(http, new AnonymousAuthenticationProvider());
         uploads ??= new BaseGraphRequestAdapter(new AnonymousAuthenticationProvider(), httpClient: http);
         ILogger logger = new LoggerConfiguration().WriteTo.Console().CreateLogger();
-        SmtpConfiguration smtp = new() { Host = host, Port = Port, AllowedNetworks = allowedNetworks ?? [], MaxMessageSizeMb = maxMessageSizeMb };
-        _run = Relay.CreateServer(smtp, new MessageHandler(graph, uploads, logger, sendFrom), logger).StartAsync(_cts.Token);
+        MessageHandler handler = new(graph, uploads, logger, sendFrom);
+        for (int attempt = 1; ; attempt++)
+        {
+            Port = FreePort();
+            SmtpConfiguration smtp = new() { Host = host, Port = Port, AllowedNetworks = allowedNetworks, MaxMessageSizeMb = maxMessageSizeMb };
+            _run = Relay.CreateServer(smtp, handler, logger).StartAsync(_cts.Token);
+            if (!_run.IsFaulted || attempt == 5)
+            {
+                break;
+            }
+        }
     }
 
     public async Task<SmtpClient> ConnectAsync()
     {
         SmtpClient client = new() { Timeout = 300_000 };
-        for (int attempt = 0; ; attempt++)
-        {
-            try
-            {
-                await client.ConnectAsync("127.0.0.1", Port, MailKit.Security.SecureSocketOptions.None);
-                return client;
-            }
-            catch (SocketException) when (attempt < 50)
-            {
-                await Task.Delay(100);
-            }
-        }
+        await client.ConnectAsync("127.0.0.1", Port, MailKit.Security.SecureSocketOptions.None);
+        return client;
     }
 
     public async Task SendAsync(MimeMessage message, params string[] envelope)
@@ -168,7 +170,7 @@ public sealed class RelayHarness : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await _cts.CancelAsync();
-        try { await _run; } catch (OperationCanceledException) { }
+        await _run;
         _cts.Dispose();
     }
 }

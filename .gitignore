@@ -486,3 +486,7 @@ $RECYCLE.BIN/
 # Rider IDE Config
 .idea/
 /Properties/launchSettings.json
+
+.env
+*.env
+client_secret.txt

@@ -41,11 +41,10 @@ public static class Relay
     public static IPAddress[] Resolve(string host) =>
         IPAddress.TryParse(host, out IPAddress? address) ? [address] : Dns.GetHostAddresses(host);
 
-    public static IPNetwork[] ParseNetworks(IEnumerable<string> entries) =>
+    public static IPNetwork[] ParseNetworks(string list) =>
     [
-        .. entries.Select(entry =>
+        .. list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(value =>
         {
-            string value = entry.Trim();
             if (IPAddress.TryParse(value, out IPAddress? single))
             {
                 return new IPNetwork(single, single.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? 32 : 128);
@@ -64,10 +63,6 @@ public class ClientFilter(IPNetwork[] allowed, ILogger logger) : MailboxFilter
     public override Task<bool> CanAcceptFromAsync(ISessionContext context, IMailbox from, int size, CancellationToken cancellationToken)
     {
         IPAddress remote = ((IPEndPoint)context.Properties[EndpointListener.RemoteEndPointKey]).Address;
-        if (remote.IsIPv4MappedToIPv6)
-        {
-            remote = remote.MapToIPv4();
-        }
         if (allowed.Any(n => n.Contains(remote)))
         {
             return Task.FromResult(true);

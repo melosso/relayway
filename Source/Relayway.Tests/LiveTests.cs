@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text;
 using MailKit.Net.Smtp;
 using MimeKit;
 
@@ -28,7 +30,7 @@ public class LiveTests
     [Theory]
     [InlineData("sendMail", 100 * 1024)]
     [InlineData("draft and upload session", 5 * 1024 * 1024)]
-    public async Task Relay_delivers_through_real_graph(string path, int attachmentSize)
+    public async Task LiveSend(string path, int attachmentSize)
     {
         RequireTenant();
         (Microsoft.Graph.GraphServiceClient graph, Microsoft.Kiota.Abstractions.IRequestAdapter uploads) =
@@ -38,8 +40,30 @@ public class LiveTests
         await relay.SendAsync(Message(path, attachmentSize), Env("RECIPIENT"));
     }
 
+    private static async Task<string> FollowLogsUntil(string container, string text)
+    {
+        ProcessStartInfo info = new("docker") { RedirectStandardOutput = true, RedirectStandardError = true };
+        info.ArgumentList.Add("logs");
+        info.ArgumentList.Add("-f");
+        info.ArgumentList.Add(container);
+        using Process process = Process.Start(info)!;
+        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromMinutes(1));
+        StringBuilder seen = new();
+        while (await process.StandardOutput.ReadLineAsync(timeout.Token) is { } line)
+        {
+            seen.AppendLine(line);
+            if (line.Contains(text))
+            {
+                process.Kill();
+                return seen.ToString();
+            }
+        }
+        return seen.Append(await process.StandardError.ReadToEndAsync(timeout.Token)).ToString();
+    }
+
     [Fact]
-    public async Task Container_accepts_mail_on_published_port()
+    public async Task LiveContainerSend()
     {
         RequireTenant();
         await DockerTests.RequireDocker();
@@ -55,12 +79,7 @@ public class LiveTests
         Assert.True(runCode == 0, runOutput);
         try
         {
-            string logs = "";
-            for (int i = 0; i < 60 && !logs.Contains("SMTP server listening"); i++)
-            {
-                await Task.Delay(1000, TestContext.Current.CancellationToken);
-                logs = (await DockerTests.Docker("logs", name)).Output;
-            }
+            string logs = await FollowLogsUntil(name, "SMTP server listening");
             Assert.Contains("SMTP server listening", logs);
             Assert.DoesNotContain(Env("CLIENT_SECRET"), logs);
 

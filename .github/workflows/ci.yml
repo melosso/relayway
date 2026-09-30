@@ -23,6 +23,14 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Slopwatch
+        run: |
+          dotnet tool restore
+          dotnet slopwatch analyze -d . --no-baseline --fail-on warning
+
+      - name: Format
+        run: dotnet format Source/Relayway.slnx --verify-no-changes
+
       - name: Build
         run: dotnet build Source/Relayway.slnx -c Release
 

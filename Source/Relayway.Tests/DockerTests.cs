@@ -46,7 +46,7 @@ public class DockerTests
     }
 
     [Fact]
-    public async Task Image_rejects_bad_credentials_against_real_entra_id_with_one_line()
+    public async Task ImageBadCredentials()
     {
         await RequireDocker();
         (int buildCode, string buildOutput) = await Build.Value;
@@ -56,17 +56,17 @@ public class DockerTests
             "-e", "Graph__TenantId=00000000-0000-0000-0000-000000000000",
             "-e", "Graph__ClientId=00000000-0000-0000-0000-000000000000",
             "-e", "Graph__ClientSecret=not-a-secret",
-            "-e", "SendFrom=relay@contoso.test",
+            "-e", "SendFrom=relay@lidlcloud.test",
             Image);
 
         Assert.Equal(1, code);
-        Assert.Contains("Cannot verify SendFrom relay@contoso.test with Microsoft Graph", output);
+        Assert.Contains("Cannot verify SendFrom relay@lidlcloud.test with Microsoft Graph", output);
         Assert.DoesNotContain("not-a-secret", output);
         Assert.DoesNotContain("Unhandled exception", output);
     }
 
     [Fact]
-    public async Task Image_rejects_missing_configuration()
+    public async Task ImageMissingConfig()
     {
         await RequireDocker();
         (int buildCode, string buildOutput) = await Build.Value;
@@ -79,7 +79,7 @@ public class DockerTests
     }
 
     [Fact]
-    public async Task Image_refuses_loopback_host_before_contacting_graph()
+    public async Task ImageLoopbackHost()
     {
         await RequireDocker();
         (int buildCode, string buildOutput) = await Build.Value;
@@ -90,31 +90,31 @@ public class DockerTests
             "-e", "Graph__TenantId=00000000-0000-0000-0000-000000000000",
             "-e", "Graph__ClientId=00000000-0000-0000-0000-000000000000",
             "-e", "Graph__ClientSecret=not-a-secret",
-            "-e", "SendFrom=relay@contoso.test",
+            "-e", "SendFrom=relay@lidlcloud.test",
             Image);
 
         Assert.Equal(1, code);
         Assert.Contains("Smtp:Host localhost resolves to", output);
-        Assert.Contains("Smtp__Host=0.0.0.0", output);
+        Assert.Contains("RELAYWAY_SMTP_HOST=0.0.0.0", output);
         Assert.DoesNotContain("Cannot verify SendFrom", output);
     }
 
     [Fact]
-    public async Task Swaks_client_in_docker_delivers_through_relay()
+    public async Task SwaksSend()
     {
         await RequireDocker();
         await using RelayHarness relay = new();
 
         (int code, string output) = await Docker("run", "--rm", "--network", "host", "chko/swaks",
             "--server", "127.0.0.1", "--port", relay.Port.ToString(),
-            "--from", "app@legacy.test", "--to", "ann@contoso.test,hidden@contoso.test",
-            "--header", "Subject: from swaks", "--header", "To: ann@contoso.test",
+            "--from", "app@legacy.test", "--to", "ann@lidlcloud.test,hidden@lidlcloud.test",
+            "--header", "Subject: from swaks", "--header", "To: ann@lidlcloud.test",
             "--attach", "@/etc/hostname");
 
         Assert.True(code == 0, output);
         JsonElement sent = Assert.Single(relay.Graph.Sent);
         Assert.Equal("from swaks", sent.GetProperty("subject").GetString());
-        Assert.Equal("hidden@contoso.test", sent.GetProperty("bccRecipients")[0].GetProperty("emailAddress").GetProperty("address").GetString());
+        Assert.Equal("hidden@lidlcloud.test", sent.GetProperty("bccRecipients")[0].GetProperty("emailAddress").GetProperty("address").GetString());
         Assert.Equal(1, sent.GetProperty("attachments").GetArrayLength());
     }
 }

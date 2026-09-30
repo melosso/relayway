@@ -17,7 +17,7 @@ public class SmtpConfiguration
 {
     public string Host { get; init; } = "localhost";
     public int Port { get; init; } = 2525;
-    public string[] AllowedNetworks { get; init; } = [];
+    public string AllowedNetworks { get; init; } = "";
     public int MaxMessageSizeMb { get; init; } = 35;
 }
 

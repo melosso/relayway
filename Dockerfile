@@ -11,6 +11,6 @@ FROM mcr.microsoft.com/dotnet/runtime:10.0
 WORKDIR /app
 COPY --from=build /app .
 USER $APP_UID
-ENV Smtp__Host=0.0.0.0 Smtp__Port=2525
+ENV RELAYWAY_SMTP_HOST=0.0.0.0
 EXPOSE 2525
 ENTRYPOINT ["dotnet", "Relayway.dll"]

@@ -9,7 +9,7 @@ namespace Relayway.Tests;
 public class StressTests(ITestOutputHelper output)
 {
     [Fact]
-    public async Task Concurrent_clients_lose_nothing_under_intermittent_throttling()
+    public async Task ConcurrentThrottled()
     {
         Assert.SkipUnless(Environment.GetEnvironmentVariable("RELAYWAY_STRESS") == "1", "set RELAYWAY_STRESS=1");
         const int clients = 50, perClient = 40;
@@ -31,7 +31,7 @@ public class StressTests(ITestOutputHelper output)
                 body.Attachments.Add("blob.bin", attachment);
                 MimeMessage message = new() { Subject = $"{client}-{i}", Body = body.ToMessageBody() };
                 message.From.Add(MailboxAddress.Parse("app@legacy.test"));
-                message.To.Add(MailboxAddress.Parse($"user{client}@contoso.test"));
+                message.To.Add(MailboxAddress.Parse($"user{client}@lidlcloud.test"));
                 while (true)
                 {
                     try
